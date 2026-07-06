@@ -1,0 +1,66 @@
+# Sales Management System – Database Tables, Functions, and Trigger Creation Scripts
+# 1. Branches Table
+CREATE TABLE branches (
+            branch_id         SERIAL PRIMARY KEY,
+            branch_name       VARCHAR(100) NOT NULL,
+            branch_admin_name VARCHAR(100) NOT NULL
+        );  
+# 2. Users Table
+CREATE TABLE users (
+            user_id            SERIAL PRIMARY KEY,
+            username           VARCHAR(100) NOT NULL,
+            password           VARCHAR(255) NOT NULL,
+            branch_id          INTEGER REFERENCES branches(branch_id) ON DELETE SET NULL,
+            role               VARCHAR(20) NOT NULL CHECK (role IN ('Super Admin','Admin')),
+            email              VARCHAR(255) UNIQUE NOT NULL
+        ); 
+# 3.Customer Sales Table 
+CREATE TABLE customer_sales (
+            sale_id           SERIAL PRIMARY KEY,
+            branch_id         INTEGER NOT NULL REFERENCES branches(branch_id) ON DELETE CASCADE,
+            date              DATE NOT NULL DEFAULT CURRENT_DATE,
+            name              VARCHAR(100) NOT NULL,
+            mobile_number     VARCHAR(15) UNIQUE,
+            product_name      VARCHAR(30),
+            gross_sales       DECIMAL(12,2) NOT NULL,
+            received_amount   DECIMAL(12,2) DEFAULT 0,
+
+            pending_amount    DECIMAL(12,2)
+            GENERATED ALWAYS AS (gross_sales - received_amount) STORED,
+
+            status            VARCHAR(10) CHECK (status IN ('Open','Close'))
+        );
+# 4. Payment Splits Table		
+CREATE TABLE payment_splits (
+            payment_id          SERIAL PRIMARY KEY,
+            sale_id             INTEGER NOT NULL REFERENCES customer_sales(sale_id) ON DELETE CASCADE,
+            payment_date        DATE NOT NULL,
+            amount_paid         DECIMAL(12,2) NOT NULL,
+            payment_method      VARCHAR(50)
+        );
+# TRRIGER
+STEP 1:CREATE FUNCTION
+
+CREATE OR REPLACE FUNCTION update_received_amount()
+RETURNS TRIGGER AS $$
+BEGIN
+
+    UPDATE customer_sales
+    SET received_amount = (
+        SELECT COALESCE(SUM(amount_paid), 0)
+        FROM payment_splits
+        WHERE sale_id = NEW.sale_id
+    )
+    WHERE sale_id = NEW.sale_id;
+
+    RETURN NEW;
+
+END;
+$$ LANGUAGE plpgsql;
+
+STEP 2: CREATE TRIGGER
+
+CREATE TRIGGER trg_update_received
+AFTER INSERT ON payment_splits
+FOR EACH ROW
+EXECUTE FUNCTION update_received_amount();
